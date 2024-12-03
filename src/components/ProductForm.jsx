@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { addDoc, collection, updateDoc, doc } from "firebase/firestore";
+import { addDoc, collection, updateDoc, doc, query, where, getDocs } from "firebase/firestore";
 import db from "../firebaseConfig";
 
 const ProductForm = ({ currentProduct, refreshProducts }) => {
   const [product, setProduct] = useState({ name: "", category: "", price: "", stock: "" });
+  const [error, setError] = useState(""); // Para almacenar errores
 
   // Actualiza el formulario si currentProduct cambia
   useEffect(() => {
@@ -12,6 +13,7 @@ const ProductForm = ({ currentProduct, refreshProducts }) => {
     } else {
       setProduct({ name: "", category: "", price: "", stock: "" });
     }
+    setError(""); // Limpiar errores al cambiar de producto
   }, [currentProduct]);
 
   const handleChange = (e) => {
@@ -20,13 +22,34 @@ const ProductForm = ({ currentProduct, refreshProducts }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (currentProduct) {
-      await updateDoc(doc(db, "products", currentProduct.id), product);
-    } else {
-      await addDoc(collection(db, "products"), product);
+    setError(""); // Limpiar error antes de validar
+
+    try {
+      // Validar si el producto ya existe
+      const productsRef = collection(db, "products");
+      const q = query(productsRef, where("name", "==", product.name));
+      const querySnapshot = await getDocs(q);
+
+      if (!currentProduct && !querySnapshot.empty) {
+        // Si se está creando un producto nuevo y ya existe uno con el mismo nombre
+        setError("Ya existe un producto con este nombre.");
+        return;
+      }
+
+      if (currentProduct) {
+        // Actualizar producto existente
+        await updateDoc(doc(db, "products", currentProduct.id), product);
+      } else {
+        // Crear nuevo producto
+        await addDoc(collection(db, "products"), product);
+      }
+
+      setProduct({ name: "", category: "", price: "", stock: "" }); // Limpiar formulario
+      refreshProducts(); // Refrescar la lista
+    } catch (err) {
+      console.error("Error al guardar el producto:", err);
+      setError("Ocurrió un error al guardar el producto. Intenta nuevamente.");
     }
-    setProduct({ name: "", category: "", price: "", stock: "" });
-    refreshProducts();
   };
 
   return (
@@ -63,6 +86,7 @@ const ProductForm = ({ currentProduct, refreshProducts }) => {
         onChange={handleChange}
         required
       />
+      {error && <p style={{ color: "red" }}>{error}</p>} {/* Mostrar mensaje de error */}
       <button type="submit">{currentProduct ? "Actualizar" : "Agregar"}</button>
     </form>
   );
